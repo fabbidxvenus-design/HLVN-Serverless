@@ -165,7 +165,7 @@ export async function getTopUsers(
 ): Promise<Array<{ userId: string; email: string; scanCount: number; cost: number }>> {
   let query = supabaseAdmin
     .from("scans")
-    .select("user_id, user_email, token_usage");
+    .select("user_id, token_usage, users!inner(email)");
 
   if (range.from) query = query.gte("timestamp", range.from);
   if (range.to) query = query.lte("timestamp", range.to);
@@ -177,7 +177,8 @@ export async function getTopUsers(
 
   for (const row of data ?? []) {
     const uid = row.user_id as string;
-    const email = (row.user_email as string | undefined) ?? "unknown";
+    const userRecords = row.users as Array<{ email: string }> | null;
+    const email = userRecords?.[0]?.email ?? "unknown";
     const tu = row.token_usage as TokenUsage | null;
     const entry = userMap.get(uid) ?? { email, scanCount: 0, cost: 0 };
     entry.scanCount += 1;

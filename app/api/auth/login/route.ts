@@ -34,6 +34,7 @@ export async function POST(req: NextRequest) {
   if (passwordErr) return NextResponse.json(fail(passwordErr, "VALIDATION_ERROR"), { status: 400 });
 
   const audience = (body.audience as "dashboard" | "mobile") ?? "mobile";
+  console.error("[auth/login] debug request", { email: body.email, audience });
 
   // Sign in via Supabase Auth
   let tokens: SessionTokens;
@@ -42,7 +43,8 @@ export async function POST(req: NextRequest) {
     const result = await signInWithPassword(body.email as string, body.password as string);
     tokens = { accessToken: result.accessToken, refreshToken: result.refreshToken, expiresAt: result.expiresAt };
     userId = result.userId;
-  } catch (err) {
+  } catch (err: unknown) {
+    console.error("[auth/login] debug sign-in failed", err);
     return NextResponse.json(fail("Invalid email or password", "AUTH_FAILED"), { status: 401 });
   }
 
@@ -50,7 +52,8 @@ export async function POST(req: NextRequest) {
   let profile: UserProfile;
   try {
     profile = await loadUserProfile(userId);
-  } catch {
+  } catch (err: unknown) {
+    console.error("[auth/login] debug profile load failed", { userId, err });
     return NextResponse.json(fail("User profile not found", "AUTH_FAILED"), { status: 401 });
   }
 

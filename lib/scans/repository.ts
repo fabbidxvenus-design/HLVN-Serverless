@@ -24,7 +24,9 @@ export interface PaginatedScans {
 
 function rowToScan(row: Record<string, unknown>): ScanRecord {
   const imageUrl = row.image_url as string | null | undefined;
-  const userEmail = row.user_email as string | undefined;
+  const users = row.users as Array<{ email?: string }> | { email?: string } | null | undefined;
+  const joinedUserEmail = Array.isArray(users) ? users[0]?.email : users?.email;
+  const userEmail = (row.user_email as string | undefined) ?? joinedUserEmail;
   return {
     id: row.id as string,
     userId: row.user_id as string,
@@ -35,8 +37,8 @@ function rowToScan(row: Record<string, unknown>): ScanRecord {
     tokenUsage: row.token_usage as ScanRecord["tokenUsage"],
     apiKeyIndex: row.api_key_index as number,
     edited: row.edited as boolean,
-    createdAt: row.created_at as string,
-    updatedAt: row.updated_at as string,
+    createdAt: (row.created_at as string | undefined) ?? (row.timestamp as string),
+    updatedAt: (row.updated_at as string | undefined) ?? (row.timestamp as string),
     ...(userEmail !== undefined ? { userEmail } : {}),
   };
 }
@@ -53,7 +55,7 @@ export async function listScans(filters: ScanListFilters = {}): Promise<Paginate
 
   let query = supabaseAdmin
     .from("scans")
-    .select("*", { count: "exact", head: false });
+    .select("*, users!inner(email)", { count: "exact", head: false });
 
   // Filter by owner
   if (filters.userId) {
@@ -74,7 +76,7 @@ export async function listScans(filters: ScanListFilters = {}): Promise<Paginate
   }
 
   const { data, error, count } = await query
-    .order("created_at", { ascending: false })
+    .order("timestamp", { ascending: false })
     .range(offset, offset + limit - 1);
 
   if (error) throw error;
@@ -94,7 +96,7 @@ export async function listScans(filters: ScanListFilters = {}): Promise<Paginate
 export async function getScanById(id: string): Promise<ScanRecord | null> {
   const { data, error } = await supabaseAdmin
     .from("scans")
-    .select("*")
+    .select("*, users!inner(email)")
     .eq("id", id)
     .single();
 

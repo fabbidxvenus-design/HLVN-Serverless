@@ -28,7 +28,7 @@ export async function signInWithPassword(
     userId: data.user.id,
     accessToken: data.session.access_token,
     refreshToken: data.session.refresh_token,
-    expiresAt: new Date(data.session.expires_at!).toISOString(),
+    expiresAt: new Date(data.session.expires_at! * 1000).toISOString(),
   };
 }
 
@@ -68,7 +68,7 @@ export async function refreshSession(
   return {
     accessToken: data.session.access_token,
     refreshToken: data.session.refresh_token,
-    expiresAt: new Date(data.session.expires_at!).toISOString(),
+    expiresAt: new Date(data.session.expires_at! * 1000).toISOString(),
   };
 }
 
@@ -84,6 +84,7 @@ export async function loadUserProfile(userId: string): Promise<UserProfile> {
     .single();
 
   if (error || !data) {
+    console.error("[auth/supabase] debug load profile failed", { userId, error, hasData: !!data });
     throw new InternalError("Failed to load user profile");
   }
 

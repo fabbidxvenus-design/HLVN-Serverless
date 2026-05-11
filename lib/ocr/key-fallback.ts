@@ -1,11 +1,12 @@
 /**
- * Multi-key fallback for OpenRouter API calls.
+ * Multi-key fallback for Gemini API calls.
  * Tries keys in order (KEY_1, KEY_2, …); falls back on auth failures and quota errors.
  */
 
 import type { RetryOptions } from "@/lib/ocr/retry";
+import { FetchError } from "@/lib/ocr/retry";
 
-/** A single OpenRouter API key with its index. */
+/** A single Gemini API key with its index. */
 export interface ApiKey {
   index: number;
   key: string;
@@ -24,14 +25,14 @@ export class KeyError extends Error {
 }
 
 /**
- * Load all OPENROUTER_KEY_N environment variables, sorted by index.
+ * Load all GEMINI_KEY_N environment variables, sorted by index.
  * Returns an empty array if none are configured.
  */
 export function loadApiKeys(): ApiKey[] {
   const keys: ApiKey[] = [];
   let i = 1;
   while (true) {
-    const envKey = `OPENROUTER_KEY_${i}`;
+    const envKey = `GEMINI_KEY_${i}`;
     const value = process.env[envKey];
     if (value === undefined) break;
     if (value.length > 0) {
@@ -58,7 +59,7 @@ export async function withKeyFallback<T>(
   onKeyError?: (keyIndex: number, err: unknown, retryable: boolean) => void,
 ): Promise<{ apiKeyIndex: number; result: T }> {
   if (keys.length === 0) {
-    throw new KeyError(-1, "No OpenRouter API keys configured", false);
+    throw new KeyError(-1, "No Gemini API keys configured", false);
   }
 
   let lastError: KeyError | undefined;
@@ -73,10 +74,10 @@ export async function withKeyFallback<T>(
       if (!retryable) {
         // Non-retryable (auth/invalid) — re-throw immediately
         if (err instanceof KeyError) throw err;
-        throw new KeyError(key.index, String(err), false);
+        throw new KeyError(key.index, getErrorMessage(err), false);
       }
 
-      lastError = err instanceof KeyError ? err : new KeyError(key.index, String(err), true);
+      lastError = err instanceof KeyError ? err : new KeyError(key.index, getErrorMessage(err), true);
     }
   }
 
@@ -90,7 +91,7 @@ export async function withKeyFallback<T>(
  * Not retryable: 400 (bad request format), 402 (payment required).
  */
 function isKeyRetryable(err: unknown): boolean {
-  if (err instanceof FetchError2) {
+  if (err instanceof FetchError) {
     if (err.status === 401) return true;  // key revoked or rotated
     if (err.status === 403) return true;  // permissions changed
     if (err.status === 429) return true;  // rate limit
@@ -119,12 +120,19 @@ function isKeyRetryable(err: unknown): boolean {
   return false;
 }
 
-class FetchError2 extends Error {
-  constructor(
-    public readonly status: number,
-    message: string,
-  ) {
-    super(message);
-    this.name = "FetchError";
+/**
+ * Extract error message from unknown error, preserving FetchError body if present.
+ */
+function getErrorMessage(err: unknown): string {
+  if (err instanceof FetchError) {
+    const base = `FetchError: ${err.message}`;
+    if (err.body) {
+      return `${base}\nResponse body: ${err.body}`;
+    }
+    return base;
   }
+  if (err instanceof Error) {
+    return err.message;
+  }
+  return String(err);
 }

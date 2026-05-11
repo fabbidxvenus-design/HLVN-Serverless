@@ -1,12 +1,12 @@
 /**
  * POST /api/ocr/process
- * OCR proxy — calls OpenRouter with vision model.
+ * OCR proxy — calls Google Gemini with vision model.
  * Uses key fallback + retry for resilience.
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/session";
-import { callOpenRouter, type OpenRouterRequest } from "@/lib/ocr/openrouter";
+import { callGemini, type GeminiRequest } from "@/lib/ocr/gemini";
 import { withRetry } from "@/lib/ocr/retry";
 import { withKeyFallback, loadApiKeys } from "@/lib/ocr/key-fallback";
 import { parseOCRResponse } from "@/lib/ocr/parse";
@@ -59,6 +59,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(fail(err.message, err.code), { status: 429 });
     }
     if (err instanceof ProviderError) {
+      console.error("[ocr/process] ProviderError:", err.message, err);
       return NextResponse.json(fail(err.message, err.code), { status: 502 });
     }
     if (err instanceof ValidationError) {
@@ -90,8 +91,7 @@ async function processOCR(body: OCRProcessRequest): Promise<OCRResult> {
     async (keyInfo) => {
       const tier: OCRModelTier = body.modelTier ?? "default";
 
-      // Build OpenRouter request — explicit to satisfy exactOptionalPropertyTypes
-      const req: OpenRouterRequest = { modelTier: tier };
+      const req: GeminiRequest = { modelTier: tier };
       if (body.imageBase64 !== undefined) {
         req.imageBase64 = body.imageBase64;
       }
@@ -99,19 +99,19 @@ async function processOCR(body: OCRProcessRequest): Promise<OCRResult> {
         req.imageUrl = body.imageUrl;
       }
 
-      const openRouterRes = await withRetry(
-        () => callOpenRouter(keyInfo.key, req),
+      const geminiRes = await withRetry(
+        () => callGemini(keyInfo.key, req),
         { maxAttempts: 3, baseDelayMs: 1000 },
       );
 
       const rawContent =
-        openRouterRes.choices[0]?.message?.content ??
+        geminiRes.choices[0]?.message?.content ??
         (() => { throw new ProviderError("Empty response from OCR provider"); })();
 
       const parsed = parseOCRResponse(
         rawContent,
-        openRouterRes.usage,
-        openRouterRes.model,
+        geminiRes.usage,
+        geminiRes.model,
       );
 
       const inputTokens = parsed.usage.input;

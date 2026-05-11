@@ -37,9 +37,9 @@ export interface OpenRouterResponse {
  * Update these as the OpenRouter model catalog evolves.
  */
 const MODEL_MAP: Record<OCRModelTier, string> = {
-  free: "anthropic/claude-3-haiku",
-  default: "anthropic/claude-3.5-sonnet",
-  high: "anthropic/claude-sonnet-4-20250514",
+  free: "openrouter/auto",
+  default: "google/gemini-2.0-flash-001",
+  high: "google/gemini-2.5-flash",
 };
 
 /**
@@ -47,13 +47,16 @@ const MODEL_MAP: Record<OCRModelTier, string> = {
  * Supports both base64-encoded images and image URLs.
  */
 function buildMessages(req: OpenRouterRequest): Record<string, unknown>[] {
-  const system = req.systemPrompt ?? DEFAULT_SYSTEM_PROMPT;
   const userContent: Record<string, unknown>[] = [];
 
   if (req.imageBase64) {
+    const imageUrl = req.imageBase64.startsWith("data:")
+      ? req.imageBase64
+      : `data:image/jpeg;base64,${req.imageBase64}`;
+
     userContent.push({
       type: "image_url",
-      image_url: { url: `data:image/jpeg;base64,${req.imageBase64}` },
+      image_url: { url: imageUrl },
     });
   } else if (req.imageUrl) {
     userContent.push({
@@ -62,13 +65,15 @@ function buildMessages(req: OpenRouterRequest): Record<string, unknown>[] {
     });
   }
 
+  const prompt = req.userPrompt ?? DEFAULT_USER_PROMPT;
+  const systemInstruction = req.systemPrompt ?? DEFAULT_SYSTEM_PROMPT;
+
   userContent.push({
     type: "text",
-    text: req.userPrompt ?? DEFAULT_USER_PROMPT,
+    text: `${systemInstruction}\n\n${prompt}`,
   });
 
   return [
-    { role: "system", content: system },
     { role: "user", content: userContent },
   ];
 }
