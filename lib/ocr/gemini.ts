@@ -53,7 +53,13 @@ interface ImageData {
   data: string;
 }
 
-const DEFAULT_SYSTEM_PROMPT = `You are an OCR processing assistant. Given an image of a document, extract all text and structure it as JSON with the following schema:
+const DEFAULT_SYSTEM_PROMPT = `You are an OCR processing assistant. Given an image of a document, extract all text and structure it as JSON.
+
+Categorize every field as exactly one of:
+- "main": critical document and business fields such as barcode/mã vạch/バーコード, product name or code/tên sản phẩm/mã hàng/商品名/商品コード, lot or batch number/số lô/ロット, contract or order number/số hợp đồng/đơn hàng/契約番号/注文番号, quantity/số lượng/数量, size/kích thước/サイズ, price/giá/価格, date/ngày/期限, or unit/đơn vị/単位.
+- "other": supplementary fields such as descriptions, notes, remarks, secondary metadata, and internal references that are not needed to identify the document, product, order, lot, quantity, size, price, date, or unit.
+
+Return JSON with this schema:
 {
   "title": "document title if present",
   "fields": [
@@ -64,7 +70,13 @@ const DEFAULT_SYSTEM_PROMPT = `You are an OCR processing assistant. Given an ima
   ],
   "notes": ["additional observations"]
 }
-Only return valid JSON. No markdown fences, no explanation.`;
+Only create a field when you can identify both a label and its corresponding value. Do not use a label as its own value. Do not create standalone values as field names. For example, if the image shows "商品名" above "VES 529CT", output { "field": "商品名", "value": "VES 529CT", "category": "main" }, not { "field": "商品名", "value": "商品名" } and not { "field": "VES 529CT", "value": "VES 529CT" }.
+
+If the document has repeated size and quantity rows, combine them into one main field instead of separate repeated fields. For example, サイズ M 数量 10 and サイズ L 数量 10 should become { "field": "サイズ / 数量", "value": "M: 10, L: 10", "confidence": "high", "category": "main" }. Do not output separate fields { "field": "サイズ", "value": "M" }, { "field": "数量", "value": "10" }, etc.
+
+If a label appears without a readable value, omit that field or set confidence to "low" with an empty value. If a value appears without a clear label, include it in notes instead of fields.
+
+The category property is required for every field. Only return valid JSON. No markdown fences, no explanation.`;
 
 const DEFAULT_USER_PROMPT =
   "Extract all text and structured data from this image. Return only JSON.";

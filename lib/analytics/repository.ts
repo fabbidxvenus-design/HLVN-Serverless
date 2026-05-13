@@ -260,8 +260,8 @@ export async function listScansForExport(range: DateRange = {}): Promise<
 > {
   let query = supabaseAdmin
     .from("scans")
-    .select("id, user_id, user_email, timestamp, image_url, ocr_raw, ocr_structured, token_usage, api_key_index")
-    .order("created_at", { ascending: false });
+    .select("id, user_id, timestamp, image_url, ocr_raw, ocr_structured, token_usage, api_key_index, users!inner(email)")
+    .order("timestamp", { ascending: false });
 
   if (range.from) query = query.gte("timestamp", range.from);
   if (range.to) query = query.lte("timestamp", range.to);
@@ -269,15 +269,20 @@ export async function listScansForExport(range: DateRange = {}): Promise<
   const { data, error } = await query.limit(1000);
   if (error) throw error;
 
-  return (data ?? []).map((row) => ({
-    id: row.id as string,
-    userId: row.user_id as string,
-    userEmail: (row.user_email as string) ?? "unknown",
-    timestamp: row.timestamp as string,
-    imageUrl: (row.image_url as string | null) ?? null,
-    ocrRaw: row.ocr_raw as string,
-    ocrStructured: (row.ocr_structured as OCRStructured) ?? { fields: [], sizes: [], rawText: "" },
-    tokenUsage: (row.token_usage as TokenUsage) ?? { input: 0, output: 0, cost: 0 },
-    apiKeyIndex: (row.api_key_index as number) ?? 0,
-  }));
+  return (data ?? []).map((row) => {
+    const users = row.users as Array<{ email?: string }> | { email?: string } | null | undefined;
+    const userEmail = Array.isArray(users) ? users[0]?.email : users?.email;
+
+    return {
+      id: row.id as string,
+      userId: row.user_id as string,
+      userEmail: userEmail ?? "unknown",
+      timestamp: row.timestamp as string,
+      imageUrl: (row.image_url as string | null) ?? null,
+      ocrRaw: row.ocr_raw as string,
+      ocrStructured: (row.ocr_structured as OCRStructured) ?? { fields: [], sizes: [], rawText: "" },
+      tokenUsage: (row.token_usage as TokenUsage) ?? { input: 0, output: 0, cost: 0 },
+      apiKeyIndex: (row.api_key_index as number) ?? 0,
+    };
+  });
 }

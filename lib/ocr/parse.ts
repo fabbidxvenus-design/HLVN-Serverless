@@ -147,9 +147,8 @@ function normalizeSize(s: unknown): OCRSize | null {
  * When JSON parsing fails, create a fallback OCRStructured from raw text.
  */
 function rawTextToFallback(rawText: string): OCRStructured {
-  // Attempt to extract size patterns like "3 XL" or "2xL"
   const sizes: OCRSize[] = [];
-  const sizeMatches = rawText.matchAll(/(\d+)\s*(?:x\s*)?([A-Z]{1,3})/gi);
+  const sizeMatches = rawText.matchAll(/\b(\d+)\s*(?:x\s*)?(XS|S|M|L|XL|XXL|XXXL)\b/gi);
   for (const m of sizeMatches) {
     if (m[1] !== undefined && m[2] !== undefined) {
       sizes.push({ size: m[2].toUpperCase(), quantity: parseInt(m[1], 10) });
