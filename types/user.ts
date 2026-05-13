@@ -12,4 +12,11 @@ export interface UserProfile {
   createdAt: string;
   updatedAt?: string;
   lastLogin: string | null;
+  displayName?: string | null;
+  description?: string | null;
+  phone?: string | null;
+  jobTitle?: string | null;
+  department?: string | null;
+  company?: string | null;
+  avatarUrl?: string | null;
 }

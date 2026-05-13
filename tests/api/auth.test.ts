@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { extractBearerToken } from "@/lib/auth/session";
+import { AuthError } from "@/lib/api/errors";
 import type { SessionTokens } from "@/types/auth";
 
 // We'll mock lib/auth/supabase-auth in the route tests
@@ -102,6 +103,56 @@ describe("POST /api/auth/register", () => {
         refreshToken: "refresh-token",
         expiresAt: "2026-05-10T01:00:00.000Z",
       },
+    });
+  });
+
+  it("preserves auth helper errors during registration", async () => {
+    const auth = await import("@/lib/auth/supabase-auth");
+    vi.mocked(auth.createUser).mockRejectedValue(new AuthError("Email already registered"));
+
+    const { POST } = await import("@/app/api/auth/register/route");
+    const req = new Request("http://localhost:3001/api/auth/register", {
+      method: "POST",
+      body: JSON.stringify({
+        email: "taken@example.com",
+        password: "password123",
+        audience: "mobile",
+      }),
+    });
+
+    const res = await POST(req as never);
+    const body = await res.json();
+
+    expect(res.status).toBe(401);
+    expect(body).toEqual({
+      success: false,
+      error: "Email already registered",
+      code: "AUTH_FAILED",
+    });
+  });
+
+  it("sanitizes unexpected registration errors", async () => {
+    const auth = await import("@/lib/auth/supabase-auth");
+    vi.mocked(auth.createUser).mockRejectedValue(new Error("database connection refused"));
+
+    const { POST } = await import("@/app/api/auth/register/route");
+    const req = new Request("http://localhost:3001/api/auth/register", {
+      method: "POST",
+      body: JSON.stringify({
+        email: "new@example.com",
+        password: "password123",
+        audience: "mobile",
+      }),
+    });
+
+    const res = await POST(req as never);
+    const body = await res.json();
+
+    expect(res.status).toBe(500);
+    expect(body).toEqual({
+      success: false,
+      error: "An unexpected error occurred",
+      code: "INTERNAL_ERROR",
     });
   });
 });

@@ -20,6 +20,16 @@ export interface PaginatedUsers {
   hasMore: boolean;
 }
 
+export interface UserProfileUpdate {
+  display_name?: string | null;
+  description?: string | null;
+  phone?: string | null;
+  job_title?: string | null;
+  department?: string | null;
+  company?: string | null;
+  avatar_url?: string | null;
+}
+
 /**
  * List users with optional pagination and filtering.
  */
@@ -94,6 +104,21 @@ export async function deleteUser(id: string): Promise<void> {
   if (error) throw error;
 }
 
+export async function updateUserProfile(
+  id: string,
+  updates: UserProfileUpdate,
+): Promise<UserProfile> {
+  const { data, error } = await supabaseAdmin
+    .from("users")
+    .update(updates)
+    .eq("id", id)
+    .select()
+    .single();
+
+  if (error || !data) throw error;
+  return rowToProfile(data);
+}
+
 // ── Internal ──────────────────────────────────────────────────────────────────
 
 function rowToProfile(row: {
@@ -103,6 +128,13 @@ function rowToProfile(row: {
   created_at: string;
   updated_at?: string | null;
   last_login?: string | null;
+  display_name?: string | null;
+  description?: string | null;
+  phone?: string | null;
+  job_title?: string | null;
+  department?: string | null;
+  company?: string | null;
+  avatar_url?: string | null;
 }): UserProfile {
   const lastLogin: string | null = (row.last_login ?? null) as string | null;
   const updatedAt: string | undefined = row.updated_at ?? undefined;
@@ -113,5 +145,12 @@ function rowToProfile(row: {
     createdAt: row.created_at,
     ...(updatedAt !== undefined ? { updatedAt } : {}),
     lastLogin,
+    displayName: row.display_name ?? null,
+    description: row.description ?? null,
+    phone: row.phone ?? null,
+    jobTitle: row.job_title ?? null,
+    department: row.department ?? null,
+    company: row.company ?? null,
+    avatarUrl: row.avatar_url ?? null,
   };
 }

@@ -68,6 +68,13 @@ export async function getCurrentUser(authHeader: string | null): Promise<UserPro
     createdAt: profile.created_at,
     updatedAt: profile.updated_at ?? undefined,
     lastLogin: profile.last_login ?? null,
+    displayName: profile.display_name ?? null,
+    description: profile.description ?? null,
+    phone: profile.phone ?? null,
+    jobTitle: profile.job_title ?? null,
+    department: profile.department ?? null,
+    company: profile.company ?? null,
+    avatarUrl: profile.avatar_url ?? null,
   };
 }
 

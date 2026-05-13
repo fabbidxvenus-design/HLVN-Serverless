@@ -9,13 +9,37 @@ import {
   getUserById,
   countAdmins,
   deleteUser,
+  updateUserProfile,
   type UserListFilters,
   type PaginatedUsers,
+  type UserProfileUpdate,
 } from "@/lib/users/repository";
 import type { UserProfile, UserRole } from "@/types/user";
 import { ValidationError, NotFoundError, InternalError } from "@/lib/api/errors";
 
 export { type UserListFilters, type PaginatedUsers };
+
+export interface UpdateCurrentUserProfileInput {
+  displayName?: unknown;
+  description?: unknown;
+  phone?: unknown;
+  jobTitle?: unknown;
+  department?: unknown;
+  company?: unknown;
+  avatarUrl?: unknown;
+}
+
+const PROFILE_LIMITS = {
+  displayName: 80,
+  description: 280,
+  phone: 32,
+  jobTitle: 80,
+  department: 80,
+  company: 120,
+  avatarUrl: 4096,
+};
+
+const PHONE_RE = /^[+()\d\s.-]+$/;
 
 /**
  * List users with pagination (admin only — called from route after requireAdmin).
@@ -110,4 +134,61 @@ export async function deleteUserService(userId: string): Promise<string> {
 
   await deleteUser(userId);
   return userId;
+}
+
+export async function updateCurrentUserProfileService(
+  userId: string,
+  input: UpdateCurrentUserProfileInput,
+): Promise<UserProfile> {
+  const updates: UserProfileUpdate = {};
+
+  assignProfileText(updates, "display_name", input.displayName, PROFILE_LIMITS.displayName, "Tên hiển thị");
+  assignProfileText(updates, "description", input.description, PROFILE_LIMITS.description, "Mô tả");
+  assignProfileText(updates, "phone", input.phone, PROFILE_LIMITS.phone, "Số điện thoại");
+  assignProfileText(updates, "job_title", input.jobTitle, PROFILE_LIMITS.jobTitle, "Chức danh");
+  assignProfileText(updates, "department", input.department, PROFILE_LIMITS.department, "Phòng ban");
+  assignProfileText(updates, "company", input.company, PROFILE_LIMITS.company, "Công ty");
+  assignProfileText(updates, "avatar_url", input.avatarUrl, PROFILE_LIMITS.avatarUrl, "Ảnh đại diện");
+
+  if (updates.phone && !PHONE_RE.test(updates.phone)) {
+    throw new ValidationError("Số điện thoại không hợp lệ");
+  }
+
+  if (updates.avatar_url && !isAllowedAvatarUrl(updates.avatar_url)) {
+    throw new ValidationError("Ảnh đại diện phải là HTTPS hoặc data image");
+  }
+
+  try {
+    return await updateUserProfile(userId, updates);
+  } catch {
+    throw new InternalError("Internal server error");
+  }
+}
+
+function assignProfileText(
+  updates: UserProfileUpdate,
+  key: keyof UserProfileUpdate,
+  value: unknown,
+  maxLength: number,
+  label: string,
+): void {
+  if (value === undefined) return;
+  if (value === null) {
+    updates[key] = null;
+    return;
+  }
+  if (typeof value !== "string") {
+    throw new ValidationError(`${label} không hợp lệ`);
+  }
+
+  const trimmed = value.trim();
+  if (trimmed.length > maxLength) {
+    throw new ValidationError(`${label} không được vượt quá ${maxLength} ký tự`);
+  }
+
+  updates[key] = trimmed === "" ? null : trimmed;
+}
+
+function isAllowedAvatarUrl(value: string): boolean {
+  return value.startsWith("https://") || /^data:image\/(png|jpe?g|gif|webp);base64,[a-z0-9+/]+=*$/i.test(value);
 }

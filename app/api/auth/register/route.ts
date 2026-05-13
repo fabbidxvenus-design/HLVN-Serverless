@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createUser, signInWithPassword } from "@/lib/auth/supabase-auth";
+import { ApiError, toApiError } from "@/lib/api/errors";
 import { ok, fail } from "@/lib/api/response";
 import { isEmail, isRequiredString } from "@/lib/api/validation";
 import type { SessionTokens } from "@/types/auth";
@@ -30,7 +31,10 @@ export async function POST(req: NextRequest) {
   if (emailErr) return NextResponse.json(fail(emailErr, "VALIDATION_ERROR"), { status: 400 });
   if (passwordErr) return NextResponse.json(fail(`Password must be at least ${MIN_PASSWORD_LENGTH} characters`, "VALIDATION_ERROR"), { status: 400 });
 
-  const audience = (body.audience as "dashboard" | "mobile") ?? "mobile";
+  const audience = body.audience ?? "mobile";
+  if (audience !== "mobile" && audience !== "dashboard") {
+    return NextResponse.json(fail("Invalid audience", "VALIDATION_ERROR"), { status: 400 });
+  }
   if (audience === "dashboard") {
     return NextResponse.json(fail("Dashboard users must be created by an administrator", "FORBIDDEN"), { status: 403 });
   }
@@ -45,7 +49,8 @@ export async function POST(req: NextRequest) {
     };
 
     return NextResponse.json(ok({ user: profile, ...tokens }), { status: 201 });
-  } catch {
-    return NextResponse.json(fail("Unable to register account", "VALIDATION_ERROR"), { status: 400 });
+  } catch (err: unknown) {
+    const apiError = err instanceof ApiError ? err : toApiError(err);
+    return NextResponse.json(fail(apiError.message, apiError.code), { status: apiError.status });
   }
 }
