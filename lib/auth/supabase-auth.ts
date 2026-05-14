@@ -72,6 +72,77 @@ export async function refreshSession(
   };
 }
 
+export async function sendPasswordResetEmail(email: string, redirectTo?: string): Promise<void> {
+  const { createClient } = await import("@supabase/supabase-js");
+  const { supabaseUrl, supabaseAnonKey } = getPublicSupabaseEnv();
+  const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  });
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    ...(redirectTo ? { redirectTo } : {}),
+  });
+
+  if (error) {
+    console.error("[auth/supabase] reset password email failed", {
+      status: error.status,
+      name: error.name,
+      message: error.message,
+    });
+    throw new InternalError("Failed to send password reset email", {
+      status: error.status,
+      name: error.name,
+      message: error.message,
+    });
+  }
+}
+
+function getPublicSupabaseEnv(): { supabaseUrl: string; supabaseAnonKey: string } {
+  const supabaseUrl = process.env["NEXT_PUBLIC_SUPABASE_URL"];
+  const supabaseAnonKey = process.env["NEXT_PUBLIC_SUPABASE_ANON_KEY"];
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new InternalError("Supabase client env is not configured");
+  }
+
+  return { supabaseUrl, supabaseAnonKey };
+}
+
+export async function updatePasswordWithAccessToken(accessToken: string, password: string): Promise<void> {
+  const { createClient } = await import("@supabase/supabase-js");
+  const { supabaseUrl, supabaseAnonKey } = getPublicSupabaseEnv();
+  const recoveryClient = createClient(supabaseUrl, supabaseAnonKey, {
+    global: {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+  });
+
+  const { error } = await recoveryClient.auth.updateUser({ password });
+  if (error) {
+    throw new AuthError("Invalid or expired password reset link");
+  }
+}
+
+export async function updatePasswordWithCode(code: string, password: string): Promise<void> {
+  const { createClient } = await import("@supabase/supabase-js");
+  const { supabaseUrl, supabaseAnonKey } = getPublicSupabaseEnv();
+  const recoveryClient = createClient(supabaseUrl, supabaseAnonKey);
+  const { error: exchangeError } = await recoveryClient.auth.exchangeCodeForSession(code);
+
+  if (exchangeError) {
+    throw new AuthError("Invalid or expired password reset link");
+  }
+
+  const { error } = await recoveryClient.auth.updateUser({ password });
+  if (error) {
+    throw new AuthError("Invalid or expired password reset link");
+  }
+}
+
 /**
  * Load a user profile by ID using the service-role client.
  * Used for admin-scoped lookups (e.g., me endpoint, role checks).
