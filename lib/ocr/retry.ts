@@ -1,7 +1,7 @@
 /**
  * Exponential backoff retry utility.
- * Used by the OCR proxy for transient provider errors (503, 429, timeouts).
- * Does NOT retry on auth errors (401, 403) or invalid request (400).
+ * Used by the OCR proxy for transient provider errors (5xx, timeouts).
+ * Does NOT retry quota/key errors (429, 401, 403) within the same key; key fallback handles those.
  */
 
 export interface RetryOptions {
@@ -25,13 +25,13 @@ export const DEFAULT_RETRY_OPTIONS: Required<Omit<RetryOptions, "onRetry">> & { 
 
 /**
  * Determine if an error is retryable.
- * Retry: 429 (rate limit), 503 (service unavailable), network errors.
- * Don't retry: 400, 401, 403, 404, 5xx other than 503.
+ * Retry: 5xx service errors and network timeouts.
+ * Don't retry within a key: 400, 401, 403, 404, 429, and other non-transient client/key errors.
  */
 export function isRetryable(error: unknown): boolean {
   if (error instanceof FetchError) {
-    if (error.status === 429) return true;
     if (error.status === 503) return true;
+    if (error.status >= 500) return true;
     if (error.status === 0) return true; // network error / timeout
     return false;
   }
