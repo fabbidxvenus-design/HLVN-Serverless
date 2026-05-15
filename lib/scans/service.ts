@@ -119,18 +119,22 @@ export async function createScanService(
 ): Promise<ScanRecord> {
   const { imageUrl, ocrRaw, ocrStructured, tokenUsage, apiKeyIndex, timestamp } = payload;
 
-  // Validate imageUrl: only null/undefined is allowed (no external URLs),
-  // and if a non-null storage path is provided it must belong to this user.
+  // Validate imageUrl: allow null/undefined, base64 data URLs, or user-owned storage paths
   if (imageUrl !== null && imageUrl !== undefined) {
     if (typeof imageUrl !== "string") {
       throw new ValidationError("imageUrl must be a string or null");
     }
-    if (!isValidStoragePath(imageUrl)) {
+
+    // Allow base64 data URLs (from localStorage)
+    if (imageUrl.startsWith('data:image/')) {
+      // Base64 data URLs are allowed for any user (no ownership check needed)
+    }
+    // Allow storage paths (must belong to user)
+    else if (!isValidStoragePath(imageUrl)) {
       throw new ValidationError(
         "imageUrl must be a storage path matching scans/<userId>/<file>",
       );
-    }
-    if (!imageUrl.startsWith(`scans/${userId}/`)) {
+    } else if (!imageUrl.startsWith(`scans/${userId}/`)) {
       throw new ValidationError("imageUrl must belong to the requesting user");
     }
   }
