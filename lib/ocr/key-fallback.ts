@@ -17,7 +17,7 @@ export class KeyError extends Error {
   constructor(
     public readonly apiKeyIndex: number,
     message: string,
-    public readonly retryable: boolean, // true = quota/503, false = auth/invalid
+    public readonly retryable: boolean, // true = try next key, false = stop fallback
   ) {
     super(message);
     this.name = "KeyError";
@@ -72,7 +72,6 @@ export async function withKeyFallback<T>(
       onKeyError?.(key.index, err, retryable);
 
       if (!retryable) {
-        // Non-retryable (auth/invalid) — re-throw immediately
         if (err instanceof KeyError) throw err;
         throw new KeyError(key.index, getErrorMessage(err), false);
       }
@@ -125,11 +124,7 @@ function isKeyRetryable(err: unknown): boolean {
  */
 function getErrorMessage(err: unknown): string {
   if (err instanceof FetchError) {
-    const base = `FetchError: ${err.message}`;
-    if (err.body) {
-      return `${base}\nResponse body: ${err.body}`;
-    }
-    return base;
+    return `FetchError: ${err.message}`;
   }
   if (err instanceof Error) {
     return err.message;

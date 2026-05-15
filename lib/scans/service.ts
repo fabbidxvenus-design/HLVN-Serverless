@@ -13,14 +13,48 @@ import {
   type ScanListFilters,
   type PaginatedScans,
 } from "@/lib/scans/repository";
-import { deleteStorageObject } from "@/lib/supabase/storage";
+import { deleteStorageObject, generateReadUrl } from "@/lib/supabase/storage";
 import type { ScanRecord, OCRStructured } from "@/types/scan";
-import { NotFoundError, ForbiddenError } from "@/lib/api/errors";
+import { NotFoundError, ForbiddenError, ValidationError } from "@/lib/api/errors";
 
 export { type ScanListFilters, type PaginatedScans };
 
 /**
+ * Storage-path pattern: scans/<userId>/<filename with optional prefix>
+ * Allows null/undefined for no-image scans.
+ */
+const STORAGE_PATH_RE = /^scans\/[a-zA-Z0-9-]+\/.+/;
+
+function isValidStoragePath(path: string): boolean {
+  return STORAGE_PATH_RE.test(path) && !path.includes("..");
+}
+
+/**
+ * Convert a repository ScanRecord (raw storage path) to a client-facing record
+ * by replacing imageUrl with a signed read URL.
+ * Graceful fallback: if signing fails, return null rather than throwing.
+ */
+async function toClientScan(scan: ScanRecord): Promise<ScanRecord> {
+  if (!scan.imageUrl) {
+    return { ...scan, imageUrl: null };
+  }
+  try {
+    const signedUrl = await generateReadUrl(scan.imageUrl);
+    return { ...scan, imageUrl: signedUrl };
+  } catch (error) {
+    console.warn("[scans] Failed to generate signed read URL", {
+      scanId: scan.id,
+      userId: scan.userId,
+      storagePath: scan.imageUrl,
+      error,
+    });
+    return { ...scan, imageUrl: null };
+  }
+}
+
+/**
  * List scans — admin sees all, non-admin sees only their own.
+ * Returns client-facing records with signed image URLs.
  */
 export async function listScansService(
   filters: ScanListFilters,
@@ -32,11 +66,14 @@ export async function listScansService(
     filters.userId = requestingUserId;
   }
 
-  return listScans(filters);
+  const result = await listScans(filters);
+  const scans = await Promise.all(result.scans.map(toClientScan));
+  return { ...result, scans };
 }
 
 /**
  * Get a scan by ID — owner or admin only.
+ * Returns client-facing record with signed image URL.
  */
 export async function getScanService(
   scanId: string,
@@ -50,11 +87,12 @@ export async function getScanService(
     throw new ForbiddenError("You do not have access to this scan");
   }
 
-  return scan;
+  return toClientScan(scan);
 }
 
 /**
  * Create a new scan record.
+ * Enforces that imageUrl, if provided, must be a storage path owned by the requesting user.
  */
 export async function createScanService(
   userId: string,
@@ -68,6 +106,23 @@ export async function createScanService(
   },
 ): Promise<ScanRecord> {
   const { imageUrl, ocrRaw, ocrStructured, tokenUsage, apiKeyIndex, timestamp } = payload;
+
+  // Validate imageUrl: only null/undefined is allowed (no external URLs),
+  // and if a non-null storage path is provided it must belong to this user.
+  if (imageUrl !== null && imageUrl !== undefined) {
+    if (typeof imageUrl !== "string") {
+      throw new ValidationError("imageUrl must be a string or null");
+    }
+    if (!isValidStoragePath(imageUrl)) {
+      throw new ValidationError(
+        "imageUrl must be a storage path matching scans/<userId>/<file>",
+      );
+    }
+    if (!imageUrl.startsWith(`scans/${userId}/`)) {
+      throw new ValidationError("imageUrl must belong to the requesting user");
+    }
+  }
+
   const repoPayload: Parameters<typeof createScan>[1] = {
     imageUrl: imageUrl ?? null,
     ocrRaw,
@@ -78,11 +133,13 @@ export async function createScanService(
   if (timestamp !== undefined) {
     repoPayload.timestamp = timestamp;
   }
-  return createScan(userId, repoPayload);
+  const scan = await createScan(userId, repoPayload);
+  return toClientScan(scan);
 }
 
 /**
  * Update a scan's OCR output — owner or admin only.
+ * Returns client-facing record with signed image URL.
  */
 export async function updateScanService(
   scanId: string,
@@ -97,20 +154,23 @@ export async function updateScanService(
     throw new ForbiddenError("You do not have access to edit this scan");
   }
 
-  return updateScan(scanId, ocrStructured);
+  const updated = await updateScan(scanId, ocrStructured);
+  return toClientScan(updated);
 }
 
 /**
  * Delete a scan — admin only.
+ * Storage path extraction works for both signed read URLs and raw storage paths.
  */
 export async function deleteScanService(scanId: string): Promise<string> {
   const scan = await getScanById(scanId);
   if (!scan) throw new NotFoundError(`Scan ${scanId} not found`);
 
-  // Clean up storage object if present
+  // scan.imageUrl may be a signed URL or raw storage path.
+  // Delete only when we can validate a safe storage path.
   if (scan.imageUrl) {
-    // Extract storage path from public URL — best effort
-    const storagePath = extractStoragePath(scan.imageUrl);
+    const extractedPath = extractStoragePath(scan.imageUrl);
+    const storagePath = extractedPath ?? (isValidStoragePath(scan.imageUrl) ? scan.imageUrl : null);
     if (storagePath) {
       await deleteStorageObject(storagePath);
     }
