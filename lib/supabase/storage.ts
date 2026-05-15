@@ -10,10 +10,9 @@ const SCANS_BUCKET = "scans";
 
 /** Build a storage path for a scan image. */
 export function buildScanStoragePath(userId: string, fileName: string): string {
-  // Path: scans/<userId>/<uuid>_<originalFilename>
-  const timestamp = Date.now();
-  const sanitised = fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
-  return `${SCANS_BUCKET}/${userId}/${timestamp}_${sanitised}`;
+  const sanitised = fileName.replace(/[^a-zA-Z0-9._-]/g, "_").replace(/\.+/g, ".");
+  const safeFileName = sanitised.replace(/^\.+/, "") || "scan.jpg";
+  return `${SCANS_BUCKET}/${userId}/${crypto.randomUUID()}_${safeFileName}`;
 }
 
 /**

@@ -35,7 +35,7 @@ function isValidStoragePath(path: string): boolean {
  * Graceful fallback: if signing fails, return null rather than throwing.
  */
 async function toClientScan(scan: ScanRecord): Promise<ScanRecord> {
-  if (!scan.imageUrl) {
+  if (!scan.imageUrl || !isValidStoragePath(scan.imageUrl)) {
     return { ...scan, imageUrl: null };
   }
   try {
