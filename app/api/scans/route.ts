@@ -99,6 +99,7 @@ export async function GET(req: NextRequest) {
 
 interface CreateScanBody {
   imageUrl?: unknown;
+  imageDataUrl?: unknown;
   ocrRaw?: unknown;
   ocrStructured?: unknown;
   tokenUsage?: unknown;
@@ -145,8 +146,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(fail("imageUrl must be a string or null", "VALIDATION_ERROR"), { status: 400 });
   }
 
+  // Optional imageDataUrl validation: if present, must be base64 data URL string
+  if (body.imageDataUrl !== undefined && body.imageDataUrl !== null && typeof body.imageDataUrl !== "string") {
+    return NextResponse.json(fail("imageDataUrl must be a string or null", "VALIDATION_ERROR"), { status: 400 });
+  }
+
   const pTimestamp = typeof body.timestamp === "string" ? body.timestamp : undefined;
+
+  // Prefer imageDataUrl (base64 from localStorage) over imageUrl (storage path)
   const pImageUrl: string | null =
+    typeof body.imageDataUrl === "string" ? body.imageDataUrl :
     body.imageUrl === null ? null :
     typeof body.imageUrl === "string" ? body.imageUrl : null;
 

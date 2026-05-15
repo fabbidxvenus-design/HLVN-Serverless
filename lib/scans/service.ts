@@ -30,14 +30,26 @@ function isValidStoragePath(path: string): boolean {
 }
 
 /**
- * Convert a repository ScanRecord (raw storage path) to a client-facing record
- * by replacing imageUrl with a signed read URL.
- * Graceful fallback: if signing fails, return null rather than throwing.
+ * Convert a repository ScanRecord (raw storage path or base64) to a client-facing record.
+ * - If imageUrl is a storage path (scans/...), sign it into a read URL
+ * - If imageUrl is base64 (data:image/...), return as-is
+ * - Otherwise return null
  */
 async function toClientScan(scan: ScanRecord): Promise<ScanRecord> {
-  if (!scan.imageUrl || !isValidStoragePath(scan.imageUrl)) {
+  if (!scan.imageUrl) {
     return { ...scan, imageUrl: null };
   }
+
+  // Base64 data URL - return as-is
+  if (scan.imageUrl.startsWith('data:image/')) {
+    return scan;
+  }
+
+  // Storage path - sign it
+  if (!isValidStoragePath(scan.imageUrl)) {
+    return { ...scan, imageUrl: null };
+  }
+
   try {
     const signedUrl = await generateReadUrl(scan.imageUrl);
     return { ...scan, imageUrl: signedUrl };
