@@ -22,7 +22,7 @@ const settingsStore = new Map<string, AppSettings>();
 function getDefaultSettings(userId: string): AppSettings {
   return {
     id: userId,
-    selectedModelTier: "default",
+    selectedModelTier: "free",
     lastUpdated: new Date().toISOString(),
   };
 }
