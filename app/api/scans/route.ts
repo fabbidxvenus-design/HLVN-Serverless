@@ -9,7 +9,52 @@ import { listScansService, createScanService } from "@/lib/scans/service";
 import { buildSearchFilters } from "@/lib/scans/search";
 import { ok, fail } from "@/lib/api/response";
 import { toApiError } from "@/lib/api/errors";
-import type { ScanRecord, OCRStructured, TokenUsage } from "@/types/scan";
+import type { OCRStructured, TokenUsage } from "@/types/scan";
+
+const OCR_CONFIDENCE_VALUES = new Set(["high", "medium", "low"]);
+const OCR_CATEGORY_VALUES = new Set(["main", "other"]);
+
+function isTokenUsage(value: unknown): value is TokenUsage {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  if (typeof record.input !== "number" || !Number.isFinite(record.input)) return false;
+  if (typeof record.output !== "number" || !Number.isFinite(record.output)) return false;
+  if (typeof record.cost !== "number" || !Number.isFinite(record.cost)) return false;
+  if (record.model !== undefined && typeof record.model !== "string") return false;
+  return true;
+}
+
+function isOCRStructured(value: unknown): value is OCRStructured {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+
+  if (record.title !== undefined && typeof record.title !== "string") return false;
+  if (record.rawText !== undefined && typeof record.rawText !== "string") return false;
+
+  if (record.notes !== undefined) {
+    if (!Array.isArray(record.notes) || !record.notes.every((note) => typeof note === "string")) return false;
+  }
+
+  if (!Array.isArray(record.fields) || !Array.isArray(record.sizes)) return false;
+
+  const hasValidFields = record.fields.every((field) => {
+    if (!field || typeof field !== "object") return false;
+    const fieldRecord = field as Record<string, unknown>;
+    if (typeof fieldRecord.field !== "string") return false;
+    if (typeof fieldRecord.value !== "string") return false;
+    if (fieldRecord.confidence !== undefined && !OCR_CONFIDENCE_VALUES.has(String(fieldRecord.confidence))) return false;
+    if (fieldRecord.category !== undefined && !OCR_CATEGORY_VALUES.has(String(fieldRecord.category))) return false;
+    return true;
+  });
+
+  if (!hasValidFields) return false;
+
+  return record.sizes.every((sizeEntry) => {
+    if (!sizeEntry || typeof sizeEntry !== "object") return false;
+    const sizeRecord = sizeEntry as Record<string, unknown>;
+    return typeof sizeRecord.size === "string" && typeof sizeRecord.quantity === "number" && Number.isFinite(sizeRecord.quantity);
+  });
+}
 
 export async function GET(req: NextRequest) {
   let user;
@@ -80,14 +125,14 @@ export async function POST(req: NextRequest) {
   if (typeof body.ocrRaw !== "string" || !body.ocrRaw) {
     return NextResponse.json(fail("ocrRaw is required", "VALIDATION_ERROR"), { status: 400 });
   }
-  if (!body.ocrStructured || typeof body.ocrStructured !== "object") {
-    return NextResponse.json(fail("ocrStructured is required", "VALIDATION_ERROR"), { status: 400 });
+  if (!isOCRStructured(body.ocrStructured)) {
+    return NextResponse.json(fail("ocrStructured is invalid", "VALIDATION_ERROR"), { status: 400 });
   }
-  if (typeof body.tokenUsage !== "object" || body.tokenUsage === null) {
-    return NextResponse.json(fail("tokenUsage is required", "VALIDATION_ERROR"), { status: 400 });
+  if (!isTokenUsage(body.tokenUsage)) {
+    return NextResponse.json(fail("tokenUsage is invalid", "VALIDATION_ERROR"), { status: 400 });
   }
-  if (typeof body.apiKeyIndex !== "number") {
-    return NextResponse.json(fail("apiKeyIndex is required and must be a number", "VALIDATION_ERROR"), { status: 400 });
+  if (typeof body.apiKeyIndex !== "number" || !Number.isInteger(body.apiKeyIndex) || body.apiKeyIndex < 0) {
+    return NextResponse.json(fail("apiKeyIndex is required and must be a non-negative integer", "VALIDATION_ERROR"), { status: 400 });
   }
 
   // Optional timestamp validation
@@ -95,14 +140,28 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(fail("timestamp must be an ISO string", "VALIDATION_ERROR"), { status: 400 });
   }
 
+  // Optional imageUrl validation: if present, must be string or null (service enforces path rules)
+  if (body.imageUrl !== undefined && body.imageUrl !== null && typeof body.imageUrl !== "string") {
+    return NextResponse.json(fail("imageUrl must be a string or null", "VALIDATION_ERROR"), { status: 400 });
+  }
+
+  const pTimestamp = typeof body.timestamp === "string" ? body.timestamp : undefined;
+  const pImageUrl: string | null =
+    body.imageUrl === null ? null :
+    typeof body.imageUrl === "string" ? body.imageUrl : null;
+
+  const ocrRaw = body.ocrRaw;
+  const ocrStructured = body.ocrStructured;
+  const tokenUsage = body.tokenUsage;
+  const apiKeyIndex = body.apiKeyIndex;
+
   try {
-    const pTimestamp = body.timestamp as string | undefined;
     const scan = await createScanService(user.id, {
-      imageUrl: body.imageUrl as string | null,
-      ocrRaw: body.ocrRaw as string,
-      ocrStructured: body.ocrStructured as OCRStructured,
-      tokenUsage: body.tokenUsage as TokenUsage,
-      apiKeyIndex: body.apiKeyIndex as number,
+      imageUrl: pImageUrl,
+      ocrRaw,
+      ocrStructured,
+      tokenUsage,
+      apiKeyIndex,
       ...(pTimestamp !== undefined ? { timestamp: pTimestamp } : {}),
     });
     return NextResponse.json(ok(scan), { status: 201 });

@@ -17,9 +17,9 @@ export interface RetryOptions {
  * Exponential backoff with jitter capped at 30 seconds.
  */
 export const DEFAULT_RETRY_OPTIONS: Required<Omit<RetryOptions, "onRetry">> & { onRetry: undefined } = {
-  maxAttempts: 3,
-  baseDelayMs: 500,
-  maxDelayMs: 30_000,
+  maxAttempts: 2,
+  baseDelayMs: 300,
+  maxDelayMs: 2_000,
   onRetry: undefined,
 };
 

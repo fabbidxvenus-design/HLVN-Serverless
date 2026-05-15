@@ -2,8 +2,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { withRetry, isRetryable, FetchError, DEFAULT_RETRY_OPTIONS } from "@/lib/ocr/retry";
 
 describe("isRetryable", () => {
-  it("retryable: 429 rate limit", () => {
-    expect(isRetryable(new FetchError(429, "Rate limited"))).toBe(true);
+  it("not retryable: 429 rate limit (handled by key fallback)", () => {
+    expect(isRetryable(new FetchError(429, "Rate limited"))).toBe(false);
   });
 
   it("retryable: 503 unavailable", () => {
@@ -34,8 +34,8 @@ describe("isRetryable", () => {
     expect(isRetryable(new FetchError(404, "Not found"))).toBe(false);
   });
 
-  it("not retryable: 500 internal error", () => {
-    expect(isRetryable(new FetchError(500, "Internal error"))).toBe(false);
+  it("retryable: 500 internal error", () => {
+    expect(isRetryable(new FetchError(500, "Internal error"))).toBe(true);
   });
 });
 
@@ -112,9 +112,9 @@ describe("withRetry", () => {
 });
 
 describe("DEFAULT_RETRY_OPTIONS", () => {
-  it("has sensible defaults", () => {
-    expect(DEFAULT_RETRY_OPTIONS.maxAttempts).toBe(3);
-    expect(DEFAULT_RETRY_OPTIONS.baseDelayMs).toBe(500);
-    expect(DEFAULT_RETRY_OPTIONS.maxDelayMs).toBe(30_000);
+  it("has reduced defaults for user-facing OCR latency", () => {
+    expect(DEFAULT_RETRY_OPTIONS.maxAttempts).toBe(2);
+    expect(DEFAULT_RETRY_OPTIONS.baseDelayMs).toBe(300);
+    expect(DEFAULT_RETRY_OPTIONS.maxDelayMs).toBe(2_000);
   });
 });

@@ -4,7 +4,6 @@
  */
 
 import { describe, it, expect, vi } from "vitest";
-import * as scansService from "@/lib/scans/service";
 import { ForbiddenError } from "@/lib/api/errors";
 import { ADMIN_USER, MANAGER_USER, REGULAR_USER } from "tests/fixtures/users";
 import { SAMPLE_SCAN_RECORDS } from "tests/fixtures/scans";
@@ -22,10 +21,11 @@ vi.mock("@/lib/scans/repository", () => ({
 
 vi.mock("@/lib/supabase/storage", () => ({
   deleteStorageObject: vi.fn(),
+  generateReadUrl: vi.fn(async (storagePath: string) => `https://signed.example/${encodeURIComponent(storagePath)}`),
 }));
 
 import * as repo from "@/lib/scans/repository";
-import { listScansService, getScanService } from "@/lib/scans/service";
+import { listScansService, getScanService, createScanService } from "@/lib/scans/service";
 import type { PaginatedScans } from "@/lib/scans/service";
 
 function makePaginated(scans: ScanRecord[]): PaginatedScans {
@@ -97,3 +97,60 @@ describe("scan-boundaries — getScanService", () => {
     ).rejects.toThrow(ForbiddenError);
   });
 });
+
+describe("scan-boundaries — createScanService imageUrl ownership", () => {
+  const basePayload = {
+    ocrRaw: "raw",
+    ocrStructured: { fields: [], sizes: [] },
+    tokenUsage: { input: 1, output: 1, cost: 0.001 },
+    apiKeyIndex: 0,
+  };
+
+  it("accepts owned storage path", async () => {
+    const created = {
+      ...(SAMPLE_SCAN_RECORDS[0] as ScanRecord),
+      id: "scan-new-owned",
+      userId: REGULAR_USER.id,
+      imageUrl: `scans/${REGULAR_USER.id}/thumb.jpg`,
+      ocrRaw: basePayload.ocrRaw,
+      ocrStructured: basePayload.ocrStructured,
+      tokenUsage: basePayload.tokenUsage,
+      apiKeyIndex: basePayload.apiKeyIndex,
+      edited: false,
+      timestamp: "2026-05-15T12:00:00.000Z",
+      createdAt: "2026-05-15T12:00:00.000Z",
+      updatedAt: "2026-05-15T12:00:00.000Z",
+    };
+    vi.mocked(repo.createScan).mockResolvedValueOnce(created);
+
+    const result = await createScanService(REGULAR_USER.id, {
+      ...basePayload,
+      imageUrl: `scans/${REGULAR_USER.id}/thumb.jpg`,
+    });
+
+    expect(result.imageUrl).toBeDefined();
+    expect(repo.createScan).toHaveBeenCalledWith(
+      REGULAR_USER.id,
+      expect.objectContaining({ imageUrl: `scans/${REGULAR_USER.id}/thumb.jpg` }),
+    );
+  });
+
+  it("rejects storage path that belongs to another user", async () => {
+    await expect(
+      createScanService(REGULAR_USER.id, {
+        ...basePayload,
+        imageUrl: `scans/${ADMIN_USER.id}/thumb.jpg`,
+      }),
+    ).rejects.toThrow("imageUrl must belong to the requesting user");
+  });
+
+  it("rejects traversal-like storage path", async () => {
+    await expect(
+      createScanService(REGULAR_USER.id, {
+        ...basePayload,
+        imageUrl: `scans/${REGULAR_USER.id}/../../${ADMIN_USER.id}/thumb.jpg`,
+      }),
+    ).rejects.toThrow("imageUrl must be a storage path matching scans/<userId>/<file>");
+  });
+});
+

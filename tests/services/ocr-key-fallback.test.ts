@@ -14,13 +14,13 @@ afterAll(() => {
 
 describe("loadApiKeys", () => {
   it("returns empty array when no keys configured", () => {
-    delete process.env.OPENROUTER_KEY_1;
+    delete process.env.GEMINI_KEY_1;
     const keys = loadApiKeys();
     expect(keys).toEqual([]);
   });
 
   it("loads KEY_1 when present", () => {
-    process.env.OPENROUTER_KEY_1 = "sk-test-key-1";
+    process.env.GEMINI_KEY_1 = "sk-test-key-1";
     const keys = loadApiKeys();
     expect(keys).toHaveLength(1);
     expect(keys[0]!.index).toBe(0);
@@ -28,9 +28,9 @@ describe("loadApiKeys", () => {
   });
 
   it("loads multiple keys in order", () => {
-    process.env.OPENROUTER_KEY_1 = "sk-key-1";
-    process.env.OPENROUTER_KEY_2 = "sk-key-2";
-    process.env.OPENROUTER_KEY_3 = "sk-key-3";
+    process.env.GEMINI_KEY_1 = "sk-key-1";
+    process.env.GEMINI_KEY_2 = "sk-key-2";
+    process.env.GEMINI_KEY_3 = "sk-key-3";
     const keys = loadApiKeys();
     expect(keys).toHaveLength(3);
     expect(keys[0]!.key).toBe("sk-key-1");
@@ -39,17 +39,17 @@ describe("loadApiKeys", () => {
   });
 
   it("skips empty string keys", () => {
-    process.env.OPENROUTER_KEY_1 = "sk-key-1";
-    process.env.OPENROUTER_KEY_2 = "";
+    process.env.GEMINI_KEY_1 = "sk-key-1";
+    process.env.GEMINI_KEY_2 = "";
     const keys = loadApiKeys();
     expect(keys).toHaveLength(1);
     expect(keys[0]!.key).toBe("sk-key-1");
   });
 
   it("stops at first missing key", () => {
-    process.env.OPENROUTER_KEY_1 = "sk-key-1";
-    process.env.OPENROUTER_KEY_2 = "sk-key-2";
-    delete process.env.OPENROUTER_KEY_3;
+    process.env.GEMINI_KEY_1 = "sk-key-1";
+    process.env.GEMINI_KEY_2 = "sk-key-2";
+    delete process.env.GEMINI_KEY_3;
     const keys = loadApiKeys();
     expect(keys).toHaveLength(2);
   });
